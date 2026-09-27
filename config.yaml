@@ -28,6 +28,7 @@ window:
 vertical:
   power_law_alpha: 0.14
 
+# Any source with "enabled: false" is skipped entirely and left off the page.
 # Relative weight per source. At each hour a source's weight is split evenly
 # across its members that have data at that hour, so a 51-member ensemble
 # does not outvote a 6-member time-lagged hi-res ensemble by sheer count.
@@ -41,6 +42,7 @@ sources:
     synoptic_extra: 2        # plus the latest N 00/06/12/18Z cycles (48 h reach)
 
   - id: rrfs
+    enabled: false           # hidden for now; set true to bring back
     kind: rrfs
     label: RRFS time-lagged
     family: hires
@@ -138,6 +140,7 @@ sources:
     weight: 1
 
   - id: meteoblue
+    enabled: false           # hidden for now; set true to bring back
     kind: meteoblue
     label: meteoblue
     family: blend
