@@ -96,6 +96,10 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line
 .ctab tr.ng td { background: color-mix(in srgb, var(--nogo) 22%, transparent); }
 .foot { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
 
+.fams { display: flex; flex-wrap: wrap; gap: 6px 16px; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--rule); }
+.fams label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
+.fams label i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.fams input:disabled + i, .fams input:disabled ~ span { opacity: .45; }
 .srclist { list-style: none; margin: 0; padding: 0; }
 .srclist li { display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 6px; padding: 6px 0; border-top: 1px solid var(--rule); }
 .srclist li:first-child { border-top: 0; }
@@ -207,6 +211,7 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line
     </section>
     <section class="card">
       <h3>Sources</h3>
+      <div class="fams" id="fams" role="group" aria-label="Turn source groups on or off"></div>
       <ul class="srclist" id="srclist"></ul>
     </section>
   </aside>
@@ -627,6 +632,31 @@ function constraintTable() {
     <tr class="as"><td>Assess</td><td>${m.assess_at_or_above}–${m.nogo_above} mph</td><td>otherwise</td></tr>
     <tr class="ng"><td>No-go</td><td>&gt; ${m.nogo_above} mph</td><td>${pad(dd.nogo_arc[0])}–${pad(dd.nogo_arc[1])}°</td></tr>`;
 }
+// Always on when the page opens if they have any data, even partial;
+// switching them off lasts only until the page is reloaded.
+const START_ON = new Set(["href"]);
+const FAMS = [["hires", "All hi-res"], ["blend", "All blends"], ["global", "All global ens"]];
+function saveOff() {
+  const off = state.data.sources.filter(s => s.members.length && !state.enabled[s.id]).map(s => s.id);
+  store.set("plume.off.v2", JSON.stringify(off.filter(id => !START_ON.has(id))));
+}
+function famToggles() {
+  const d = state.data, el = $("#fams");
+  el.innerHTML = FAMS.map(([f, name]) => {
+    const srcs = d.sources.filter(s => s.family === f && s.members.length);
+    return `<label><input type="checkbox" data-fam="${f}" ${srcs.length ? "" : "disabled"}><i style="background:${famColor(f)}"></i><span>${name}</span></label>`;
+  }).join("");
+  el.querySelectorAll("input").forEach(cb => {
+    const srcs = d.sources.filter(s => s.family === cb.dataset.fam && s.members.length);
+    const on = srcs.filter(s => state.enabled[s.id]).length;
+    cb.checked = srcs.length > 0 && on === srcs.length;
+    cb.indeterminate = on > 0 && on < srcs.length;
+    cb.addEventListener("change", () => {
+      for (const s of srcs) state.enabled[s.id] = cb.checked;
+      saveOff(); sourceList(); compute(); drawAll();
+    });
+  });
+}
 function sourceList() {
   const d = state.data;
   $("#srclist").innerHTML = d.sources.map(s => {
@@ -638,9 +668,9 @@ function sourceList() {
   }).join("");
   $("#srclist").querySelectorAll("input").forEach(cb => cb.addEventListener("change", () => {
     state.enabled[cb.dataset.id] = cb.checked;
-    store.set("plume.off", JSON.stringify(Object.keys(state.enabled).filter(k => !state.enabled[k])));
-    compute(); drawAll();
+    saveOff(); famToggles(); compute(); drawAll();
   }));
+  famToggles();
 }
 function header() {
   const d = state.data, st = d.site;
@@ -706,8 +736,9 @@ async function load(first) {
   }
   if (!first && state.data && d.generated_unix === state.data.generated_unix) { header(); return; }
   state.data = d; C = d.constraint; TZ = d.site.display_tz || "UTC";
-  const off = new Set(JSON.parse(store.get("plume.off") || "[]"));
-  for (const s of d.sources) if (!(s.id in state.enabled)) state.enabled[s.id] = s.members.length > 0 && !off.has(s.id);
+  let off; try { off = new Set(JSON.parse(store.get("plume.off.v2") || "[]")); } catch { off = new Set(); }
+  for (const s of d.sources) if (!(s.id in state.enabled))
+    state.enabled[s.id] = s.members.length > 0 && (START_ON.has(s.id) || !off.has(s.id));
   const now = Date.now() / 1000;
   state.nowIdx = Math.max(0, d.times.findIndex(t => t >= now - 1800));
   if (first) {
