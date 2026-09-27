@@ -54,15 +54,15 @@ def build(cfg: dict, only: set | None = None) -> dict:
     for scfg in cfg["sources"]:
         if only and scfg["id"] not in only:
             continue
+        if not scfg.get("enabled", True):     # hidden: not fetched, not shown
+            log.info("%-10s hidden (enabled: false)", scfg["id"])
+            continue
         t0 = time.time()
-        if not scfg.get("enabled", True):
-            res = SourceResult({}, status="disabled", note="disabled in config")
-        else:
-            try:
-                res = KINDS[scfg["kind"]](scfg, ctx)
-            except Exception as e:
-                log.exception("%s failed", scfg["id"])
-                res = SourceResult({}, status="error", note=f"{type(e).__name__}: {e}"[:200])
+        try:
+            res = KINDS[scfg["kind"]](scfg, ctx)
+        except Exception as e:
+            log.exception("%s failed", scfg["id"])
+            res = SourceResult({}, status="error", note=f"{type(e).__name__}: {e}"[:200])
         members = []
         for mid, series in sorted(res.members.items()):
             spd = [None] * len(timeline)
