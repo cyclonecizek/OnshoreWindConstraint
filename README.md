@@ -2,7 +2,7 @@
 
 Hourly probability-of-violation dashboard for a wind constraint at a fixed
 height, built from every available model: HRRR and RRFS (time-lagged), REFS,
-HREF, NBM, NDFD, meteoblue, and the ECMWF, AIFS, GEFS, ICON and GEM ensembles.
+HREF members, NAM 3 km, NBM, NDFD, meteoblue, and the ECMWF, AIFS, GEFS, ICON and GEM ensembles.
 
 ## Set up
 
@@ -32,6 +32,13 @@ members each hour, so member count does not decide influence.
 
 ## Notes
 
+- HREF is built from its member models (HiResW ARW, ARW mem2, FV3, NAM 3 km
+  and HRRR, each current plus previous cycle), because NCEP only publishes
+  HREF mean and probability products. NAM 3 km is also its own source.
+  All of these retire when RRFS/REFS go operational and will then show
+  "missing".
+- NOMADS requests are rate-limited to 90 per minute; adjacent GRIB records
+  are fetched in one request.
 - RRFS and REFS are configured to try `prod`, then `v1.0`, then `para` on
   NOMADS, so the October 2026 cutover needs no change unless NCO uses a path
   not in that list. HREF drops out on its own once it is retired.

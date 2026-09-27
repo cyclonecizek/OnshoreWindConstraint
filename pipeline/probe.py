@@ -57,6 +57,12 @@ def main():
             probe_grib(s["id"], [s.get("base", src_ncep.HRRR_BASE)], s.get("file", src_ncep.HRRR_FILE), hours)
         elif k == "rrfs":
             probe_grib(s["id"], s["bases"], s["file"], hours)
+        elif k == "multi_model":
+            for comp in s["components"]:
+                print(f"  {comp['id']}:")
+                cyc = [c for c in (floor_hour(ctx.now) - k2 * 3600 for k2 in range(0, 30))
+                       if time.gmtime(c).tm_hour in set(comp.get("cycles", [0, 6, 12, 18]))]
+                probe_grib(s["id"], comp.get("bases") or [comp["base"]], comp["file"], cyc)
         elif k == "ensprod":
             for ftype, tmpl in s["files"].items():
                 print(f"  {ftype}:")

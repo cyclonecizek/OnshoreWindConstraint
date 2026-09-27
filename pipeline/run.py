@@ -20,6 +20,7 @@ KINDS = {
     "hrrr": src_ncep.hrrr,
     "rrfs": src_ncep.rrfs,
     "ensprod": src_ncep.ensprod,
+    "multi_model": src_ncep.multi_model,
     "openmeteo_ens": src_web.openmeteo_ens,
     "openmeteo_det": src_web.openmeteo_det,
     "nws_grid": src_web.nws_grid,

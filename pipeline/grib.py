@@ -9,6 +9,8 @@ import math
 import os
 import re
 import tempfile
+import threading
+import time
 
 from .common import SESSION, log
 
@@ -32,12 +34,34 @@ WIND_FIELDS = {
 _SKIP = re.compile(r"(\bmax\b|\bmin\b|\bave\b|\bacc\b|prob|%)", re.I)
 
 
+class _RateLimit:
+    """Evenly spaced requests. NOMADS blocks IPs that exceed ~120 hits/minute."""
+
+    def __init__(self, per_minute: float):
+        self.gap = 60.0 / per_minute
+        self.next = 0.0
+        self.lock = threading.Lock()
+
+    def wait(self):
+        with self.lock:
+            now = time.monotonic()
+            t = max(now, self.next)
+            self.next = t + self.gap
+        if t > now:
+            time.sleep(t - now)
+
+
+NOMADS_LIMIT = _RateLimit(90)
+
+
 class Missing(Exception):
     """File or inventory not published (yet)."""
 
 
 def exists(url: str) -> bool:
     try:
+        if "nomads.ncep.noaa.gov" in url:
+            NOMADS_LIMIT.wait()
         r = SESSION.head(url, timeout=15, allow_redirects=True)
         return r.status_code == 200
     except Exception:
@@ -46,7 +70,7 @@ def exists(url: str) -> bool:
 
 def read_idx(idx_url: str) -> list[tuple[str, int, int | None, str]]:
     """Returns [(record_no, start, end_or_None, description)]."""
-    r = SESSION.get(idx_url, timeout=30)
+    r = _get(idx_url, timeout=30)
     if r.status_code in (403, 404):
         raise Missing(idx_url)
     r.raise_for_status()
@@ -107,49 +131,73 @@ def _grid_meta(gid) -> dict:
     return meta
 
 
-def _decode(blob: bytes, sub_index: int, lat: float, lon: float):
+def _decode_all(blob: bytes, lat: float, lon: float) -> list[tuple]:
+    """(value, meta) for every GRIB message (and sub-message) in blob, in order."""
+    out = []
     fd, path = tempfile.mkstemp(suffix=".grib2")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(blob)
         with open(path, "rb") as f:
-            k = 0
             while True:
                 gid = eccodes.codes_grib_new_from_file(f)
                 if gid is None:
                     break
                 try:
-                    k += 1
-                    if k == sub_index:
-                        val = _nearest(gid, lat, lon)
-                        miss = eccodes.codes_get(gid, "missingValue")
-                        if abs(val - miss) < 1e-6 or abs(val) > 1e10:
-                            return None, _grid_meta(gid)
-                        return val, _grid_meta(gid)
+                    val = _nearest(gid, lat, lon)
+                    miss = eccodes.codes_get(gid, "missingValue")
+                    if abs(val - miss) < 1e-6 or abs(val) > 1e10:
+                        val = None
+                    out.append((val, _grid_meta(gid)))
                 finally:
                     eccodes.codes_release(gid)
     finally:
         os.unlink(path)
-    return None, {}
+    return out
+
+
+def _get(url: str, **kw):
+    if "nomads.ncep.noaa.gov" in url:
+        NOMADS_LIMIT.wait()
+    return SESSION.get(url, **kw)
 
 
 def fetch_point(grib_url: str, wanted: dict[str, str], lat: float, lon: float,
                 idx_url: str | None = None) -> tuple[dict, dict]:
-    """Returns (values, meta) for each wanted field found. Raises Missing."""
+    """Returns (values, meta) for each wanted field found. Raises Missing.
+
+    Adjacent records are fetched in one range request to keep hit counts low."""
     if eccodes is None:
         raise RuntimeError("eccodes not installed")
     inv = read_idx(idx_url or grib_url + ".idx")
-    found = match_fields(inv, wanted)
+    found = sorted(match_fields(inv, wanted).items(), key=lambda kv: kv[1][1])
+
+    groups: list[list] = []          # runs of contiguous, whole-message records
+    for name, rec in found:
+        whole = "." not in rec[0]
+        g = groups[-1] if groups else None
+        if (g and whole and g[-1][2] and "." not in g[-1][1][0]
+                and g[-1][1][2] is not None and rec[1] == g[-1][1][2] + 1):
+            g.append((name, rec, whole))
+        else:
+            groups.append([(name, rec, whole)])
+
     vals, meta = {}, {}
-    for name, (no, start, end, _desc) in found.items():
+    for g in groups:
+        start, end = g[0][1][1], g[-1][1][2]
         rng = f"bytes={start}-{end}" if end is not None else f"bytes={start}-"
-        r = SESSION.get(grib_url, headers={"Range": rng}, timeout=60)
+        r = _get(grib_url, headers={"Range": rng}, timeout=60)
         if r.status_code in (403, 404, 416):
             raise Missing(grib_url)
         r.raise_for_status()
-        sub = int(no.split(".")[1]) if "." in no else 1
-        v, m = _decode(r.content, sub, lat, lon)
-        vals[name], meta[name] = v, m
+        decoded = _decode_all(r.content, lat, lon)
+        if len(g) == 1 and not g[0][2]:                  # one sub-message record
+            k = int(g[0][1][0].split(".")[1]) - 1
+            pairs = [(g[0][0], decoded[k] if k < len(decoded) else (None, {}))]
+        else:
+            pairs = [(name, decoded[i] if i < len(decoded) else (None, {})) for i, (name, _, _) in enumerate(g)]
+        for name, (v, m) in pairs:
+            vals[name], meta[name] = v, m
     return vals, meta
 
 

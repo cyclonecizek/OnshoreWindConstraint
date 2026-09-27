@@ -135,6 +135,57 @@ def rrfs(scfg: dict, ctx: Context) -> SourceResult:
     return time_lagged(scfg, ctx, None, scfg["file"], short_fh=18, long_fh=84, workers=4)
 
 
+# ---------------------------------------------------------------- multi-model member sets
+def _cycles_back(hours: set, now: int, max_back: int = 60) -> list[int]:
+    return [c for c in (floor_hour(now) - k * 3600 for k in range(max_back))
+            if time.gmtime(c).tm_hour in hours]
+
+
+def _component(comp: dict, ctx: Context) -> tuple[list, str, str | None]:
+    """Tasks for one model in a member set: the latest `lag` published cycles."""
+    bases = comp.get("bases") or [comp["base"]]
+    cands = _cycles_back(set(comp.get("cycles", [0, 6, 12, 18])), ctx.now)
+    picked = _pick_base(bases, comp["file"], ctx, cands)
+    if not picked:
+        return [], f"{comp['id']} not found", None
+    base, latest = picked
+    use = [c for c in cands if c <= latest][: int(comp.get("lag", 2))]
+    tasks = [(comp, base, c, fh) for c in use
+             for fh in range(0, int(comp.get("max_fh", 48)) + 1)
+             if ctx.in_window(c + fh * 3600)]
+    return tasks, f"{comp['id']} {', '.join(time.strftime('%HZ', time.gmtime(c)) for c in use)}", base
+
+
+def multi_model(scfg: dict, ctx: Context) -> SourceResult:
+    """Members from several deterministic models, each with its own cycle lag
+    (e.g. the HREF membership: HiResW ARW, ARW mem2, FV3, NAM 3 km, HRRR)."""
+    tasks, notes, missing = [], [], []
+    for comp in scfg["components"]:
+        t, note, base = _component(comp, ctx)
+        (notes if base else missing).append(note)
+        tasks += t
+
+    def run(task):
+        comp, base, c, fh = task
+        try:
+            p = _point(f"{base}/{_fmt(comp['file'], c, fh)}", c, ctx)
+        except Exception as e:
+            log.warning("%s %s %s f%02d: %s", scfg["id"], comp["id"], iso(c), fh, e)
+            return task, None
+        return task, (_sample_det(p, ctx) if p else None)
+
+    members: dict[str, dict] = {}
+    with ThreadPoolExecutor(int(scfg.get("workers", 4))) as ex:
+        for (comp, _, c, fh), smp in ex.map(run, tasks):
+            if smp:
+                mid = f"{comp['id']} {time.strftime('%d/%HZ', time.gmtime(c))}"
+                members.setdefault(mid, {})[c + fh * 3600] = smp
+
+    note = "; ".join(notes + [f"missing: {', '.join(missing)}"] if missing else notes)
+    status = "missing" if not members else ("partial" if missing else "ok")
+    return SourceResult(members, cycle="", note=note, status=status)
+
+
 # ---------------------------------------------------------------- ensemble products
 def _normal_pairs(n: int, seed: int = 7) -> list[tuple[float, float]]:
     nd = NormalDist()
