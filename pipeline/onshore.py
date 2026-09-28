@@ -37,7 +37,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HRRR_BASE = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
 HRRR_SFC = "hrrr.{ymd}/conus/hrrr.t{hh}z.wrfsfcf{fh:02d}.grib2"
 HRRR_PRS = "hrrr.{ymd}/conus/hrrr.t{hh}z.wrfprsf{fh:02d}.grib2"
-PLEVS = (1000, 975, 950, 925)
+PLEVS = (1000, 975, 950)          # 950 mb (~500 m) is the first level above 1000 ft
 
 FIELDS = {"u10": r":UGRD:10 m above ground:", "v10": r":VGRD:10 m above ground:",
           "u80": r":UGRD:80 m above ground:", "v80": r":VGRD:80 m above ground:"}
@@ -108,6 +108,25 @@ def _decode(blob, points):
     return out
 
 
+def _multipart(resp) -> list[tuple[int, bytes]]:
+    """[(start, bytes)] from a multipart/byteranges (or single-range) response."""
+    ctype = resp.headers.get("Content-Type", "")
+    if "multipart/byteranges" not in ctype:
+        m = re.search(r"bytes (\d+)-", resp.headers.get("Content-Range", ""))
+        return [(int(m.group(1)) if m else 0, resp.content)]
+    boundary = re.search(r"boundary=\"?([^\";]+)\"?", ctype).group(1).encode()
+    parts = []
+    for chunk in resp.content.split(b"--" + boundary):
+        if b"\r\n\r\n" not in chunk:
+            continue
+        head, body = chunk.split(b"\r\n\r\n", 1)
+        m = re.search(rb"Content-Range:\s*bytes (\d+)-(\d+)", head, re.I)
+        if m:
+            a, b = int(m.group(1)), int(m.group(2))
+            parts.append((a, body[: b - a + 1]))
+    return parts
+
+
 def fetch_points(url: str, points: list) -> tuple[dict, dict]:
     if grib.eccodes is None:
         raise RuntimeError("eccodes not installed")
@@ -121,14 +140,30 @@ def fetch_points(url: str, points: list) -> tuple[dict, dict]:
             g.append((name, rec, whole))
         else:
             groups.append([(name, rec, whole)])
-    vals, meta = {}, {}
-    for g in groups:
+    def rng(g):
         a, b = g[0][1][1], g[-1][1][2]
-        r = grib._get(url, headers={"Range": f"bytes={a}-{b}" if b is not None else f"bytes={a}-"}, timeout=60)
+        return f"{a}-{b}" if b is not None else f"{a}-"
+
+    blobs = {}
+    # NOMADS accepts several byte ranges in one request, so each file costs one hit there.
+    if "nomads.ncep.noaa.gov" in url and len(groups) > 1 and all(g[-1][1][2] is not None for g in groups):
+        r = grib._get(url, headers={"Range": "bytes=" + ",".join(rng(g) for g in groups)}, timeout=90)
         if r.status_code in (403, 404, 416):
             raise Missing(url)
         r.raise_for_status()
-        dec = _decode(r.content, points)
+        if r.status_code == 206:
+            for a, body in _multipart(r):
+                blobs[a] = body
+    vals, meta = {}, {}
+    for g in groups:
+        blob = blobs.get(g[0][1][1])
+        if blob is None:
+            r = grib._get(url, headers={"Range": "bytes=" + rng(g)}, timeout=60)
+            if r.status_code in (403, 404, 416):
+                raise Missing(url)
+            r.raise_for_status()
+            blob = r.content
+        dec = _decode(blob, points)
         if len(g) == 1 and not g[0][2]:
             k = int(g[0][1][0].split(".")[1]) - 1
             pairs = [(g[0][0], dec[k] if k < len(dec) else ([None] * len(points), {}))]
@@ -150,6 +185,9 @@ def _levels_from_grib(urls, cycle, ctx) -> dict | None:
     cached = ctx.cache.get(key)
     if cached is not None:
         return cached
+    if time.time() > ctx.deadline:          # out of time this run; picked up next hour from where it left off
+        ctx.skipped += 1
+        return None
     points = [(p["lat"], p["lon"]) for p in ctx.pads]
     merged, got_any = {}, False
     for url in urls:
@@ -215,6 +253,10 @@ def _pick(bases, tmpl, cycles):
 
 
 def _run(tasks, ctx, workers, sid):
+    # newest cycles and shortest lead times first, so a run cut short by the time budget
+    # still has the most useful members
+    tasks = sorted(tasks, key=lambda t: (-t[2], t[3]))
+
     def run(task):
         mid, urls, c, valid = task
         try:
@@ -249,7 +291,7 @@ def src_hrrr(scfg, ctx):
                 tasks.append((time.strftime("%d/%HZ", time.gmtime(c)),
                               [f"{base}/{_fmt(HRRR_SFC, c, fh)}", f"{base}/{_fmt(HRRR_PRS, c, fh)}"], c, c + fh * 3600))
     mem = _run(tasks, ctx, 16, scfg["id"])
-    return SourceResult(mem, cycle=iso(latest), note=f"{len(mem)}/{len(cycles)} cycles; 10 m, 80 m and 1000-925 mb",
+    return SourceResult(mem, cycle=iso(latest), note=f"{len(mem)}/{len(cycles)} cycles; 10 m, 80 m and 1000-950 mb",
                         status="ok" if len(mem) == len(cycles) else ("partial" if mem else "missing"))
 
 
@@ -393,6 +435,8 @@ def build(cfg, only=None):
     ctx.top_m = float(oc["layer_top_ft"]) * 0.3048
     ctx.min_top = float(oc.get("min_top_level_m", 80))
     ctx.om_refresh_h = float(oc.get("openmeteo_refresh_hours", 3))
+    ctx.deadline = time.time() + 60 * float(oc.get("time_budget_min", 20))
+    ctx.skipped = 0
 
     main = {s["id"]: s for s in cfg["sources"]}
     sources = []
@@ -422,6 +466,11 @@ def build(cfg, only=None):
                     v.setdefault(k, [None] * len(timeline))[i] = x
             if v:
                 members.append({"id": mid, "v": v})
+        skipped, ctx.skipped = ctx.skipped, 0
+        if skipped:
+            res.note += f"; {skipped} files left for the next run (time budget)"
+            if res.status == "ok":
+                res.status = "partial"
         el = round(time.time() - t0, 1)
         log.info("onshore %-10s %-8s %3d members %6.1fs  %s", sid, res.status, len(members), el, res.note)
         sources.append({"id": sid, "label": scfg.get("label", sid), "family": scfg.get("family", "global"),
