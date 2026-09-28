@@ -36,9 +36,12 @@ jobs:
 
       - name: Build onshore wind
         if: always()
+        continue-on-error: true      # never let the onshore step block the 200 ft data
+        timeout-minutes: 30
         run: python -m pipeline.onshore
 
       - name: Commit data
+        if: always()                 # save whatever finished, including the download cache
         run: |
           git config user.name  "plume-bot"
           git config user.email "plume-bot@users.noreply.github.com"
