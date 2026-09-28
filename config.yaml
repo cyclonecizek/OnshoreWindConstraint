@@ -193,6 +193,10 @@ onshore:
   layer_top_ft: 1000
   min_top_level_m: 80        # a model's highest level must reach this to judge the layer
   openmeteo_refresh_hours: 3
+  # Stop downloading new GRIB files after this many minutes; whatever is left is picked
+  # up by the next hourly run (downloads are cached), so the first run fills in over a
+  # few hours instead of hitting the job time limit.
+  time_budget_min: 20
   pads:
     - id: "39a"
       label: LC-39A
