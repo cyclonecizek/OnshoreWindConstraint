@@ -15,7 +15,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -34,11 +34,15 @@ jobs:
           METEOBLUE_API_KEY: ${{ secrets.METEOBLUE_API_KEY }}
         run: python -m pipeline.run
 
+      - name: Build onshore wind
+        if: always()
+        run: python -m pipeline.onshore
+
       - name: Commit data
         run: |
           git config user.name  "plume-bot"
           git config user.email "plume-bot@users.noreply.github.com"
-          git add docs/data/plume.json cache/points.json
+          git add docs/data/plume.json docs/data/onshore.json cache/
           git diff --cached --quiet && exit 0
           git commit -m "plume $(date -u +%Y-%m-%dT%H:%MZ)"
           for i in 1 2 3; do
