@@ -136,6 +136,7 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 13px; margin-top: 8px; }
 .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
 .method { color: var(--muted); font-size: 13px; max-width: 78ch; }
+.csel { font: inherit; font-size: 16px; font-weight: 600; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 6px; margin-top: 8px; }
 .method p { margin: 0 0 6px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -144,6 +145,10 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line
 <header class="top">
   <div>
     <h1>Plume Constraint</h1>
+    <select class="csel" id="csel" aria-label="Constraint">
+      <option value="index.html" selected>Wind at 200 ft</option>
+      <option value="onshore.html">Onshore wind, surface to 1000 ft</option>
+    </select>
     <div class="where" id="where">Loading…</div>
   </div>
   <div class="fresh" id="fresh"></div>
@@ -714,6 +719,7 @@ function wire() {
   $("#wstart").addEventListener("change", readInputs);
   $("#wend").addEventListener("change", readInputs);
   $("#clearWin").addEventListener("click", () => { setWindow(null, null); drawAll(); });
+  $("#csel").addEventListener("change", e => { location.href = e.target.value + location.hash; });
   document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
     state.basis = b.dataset.basis; store.set("plume.basis", state.basis);
     document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", x === b));
