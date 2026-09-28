@@ -16,6 +16,15 @@ HREF members, NAM 3 km, NBM, NDFD, meteoblue, and the ECMWF, AIFS, GEFS, ICON an
 `docs/data/plume.json` ships with demo data so the page renders before the
 first run; the first run overwrites it.
 
+## Onshore wind page
+
+`docs/onshore.html` (pick it from the dropdown under the title) shows the
+strongest onshore wind component from the surface to 1000 ft at LC-39A or
+SLC-40, built hourly by `pipeline/onshore.py` into `docs/data/onshore.json`.
+P(Backup NO GO) uses the backup (model) limit and P(Primary NO GO) the primary
+(balloon) limit. Limits, the layer top and each pad's shoreline normal are in
+the `onshore:` section of `config.yaml`.
+
 ## Change the site or constraint
 
 Everything is in `config.yaml`: location, height, thresholds, direction arcs,

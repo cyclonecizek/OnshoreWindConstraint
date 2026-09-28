@@ -180,3 +180,33 @@ sources:
     family: global
     weight: 1
     model: gem_global
+
+# ------------------------------------------------------------------------------------
+# Onshore wind constraint (docs/onshore.html, built by pipeline/onshore.py).
+# Most negative onshore wind component between the surface and layer_top_ft.
+# coast_normal_deg = direction of the open ocean from the pad, perpendicular to the local
+# shoreline; a wind FROM this direction is fully onshore. Component < 0 is onshore.
+# Limits are the magnitudes (m/s) of the onshore component that are NO-GO:
+#   backup  = GFS/model limit     -> P(Backup NO GO)
+#   primary = balloon limit       -> P(Primary NO GO)
+onshore:
+  layer_top_ft: 1000
+  min_top_level_m: 80        # a model's highest level must reach this to judge the layer
+  openmeteo_refresh_hours: 3
+  pads:
+    - id: "39a"
+      label: LC-39A
+      lat: 28.6082
+      lon: -80.6041
+      coast_normal_deg: 62     # shoreline runs about 332/152 degrees east of the pad
+      backup_ms: 7.5
+      primary_ms: 8.0
+    - id: "40"
+      label: SLC-40
+      lat: 28.5620
+      lon: -80.5772
+      coast_normal_deg: 65     # shoreline runs about 335/155 degrees east of the pad
+      backup_ms: 7.0
+      primary_ms: 7.5
+  # Sources from the list above that have an onshore reader (hi-res GRIB, Open-Meteo).
+  sources: [hrrr, href, nam3k, nbm, ecmwf_ens, aifs_ens, gefs, icon_eps, gem_eps]
