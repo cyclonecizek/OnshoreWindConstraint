@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plume Constraint: Onshore Wind</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #e9edf1; --panel: #ffffff; --ink: #16202b; --muted: #5b6875; --rule: #d3dae1;
+  --go: #2f8f4e; --assess: #e0a019; --nogo: #c63a2f;
+  --hires: #1d6fb8; --blend: #8a4fbf; --global: #7a8896;
+  --median: #16202b; --now: #5b6875;
+  --font: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151c; --panel: #17202a; --ink: #e4e9ee; --muted: #93a1ae; --rule: #2a3642;
+    --go: #3fae63; --assess: #f0b43a; --nogo: #e2574b;
+    --hires: #4b9be0; --blend: #b27be3; --global: #8795a3; --median: #f3f6f8; --now: #93a1ae;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151c; --panel: #17202a; --ink: #e4e9ee; --muted: #93a1ae; --rule: #2a3642;
+  --go: #3fae63; --assess: #f0b43a; --nogo: #e2574b;
+  --hires: #4b9be0; --blend: #b27be3; --global: #8795a3; --median: #f3f6f8; --now: #93a1ae;
+  color-scheme: dark;
+}
+:root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font);
+  font-size: 15px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--hires); outline-offset: 2px; }
+
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 28px;
+  padding: 18px 20px 14px; border-bottom: 1px solid var(--rule); }
+h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line-height: 1; }
+.where { color: var(--muted); margin-top: 6px; }
+.fresh { margin-left: auto; text-align: right; }
+.fresh b { font-weight: 600; }
+.fresh.stale b { color: var(--nogo); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; padding: 12px 20px;
+  border-bottom: 1px solid var(--rule); }
+.controls label { color: var(--muted); margin-right: 6px; }
+.controls input[type=datetime-local] { background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 4px; padding: 4px 6px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.seg button { background: var(--panel); border: 0; padding: 4px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--hires); cursor: pointer; text-decoration: underline; }
+.banner { margin: 12px 20px 0; padding: 8px 12px; border-left: 4px solid var(--assess); background: var(--panel); }
+.banner.bad { border-color: var(--nogo); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; padding: 18px 20px 28px; }
+@media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.charts { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 0 6px; min-width: 0; }
+.chart { position: relative; }
+.chart h2 { font-size: 15px; font-weight: 600; margin: 8px 14px 2px 56px; display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; }
+.chart h2 .key { font-weight: 400; color: var(--muted); font-size: 13px; display: inline-flex; gap: 12px; }
+.sw { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; border-radius: 1px; }
+.sw.box { height: 10px; opacity: .45; }
+.chart canvas { display: block; width: 100%; }
+.chart canvas.ov { position: absolute; left: 0; bottom: 0; pointer-events: none; }
+.ribbon { margin-top: 4px; }
+
+.side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; }
+.card h3 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.readout .when { font-size: 20px; font-weight: 600; line-height: 1.1; }
+.readout .when small { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 6px; }
+.pov2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+.pov2 div { border-radius: 4px; padding: 6px 8px; border: 1px solid var(--rule); }
+.pov2 .n { font-size: 26px; font-weight: 700; line-height: 1; }
+.pov2 .l { color: var(--muted); font-size: 13px; }
+.consensus { color: var(--muted); }
+.bysrc { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+.bysrc td { padding: 2px 0; }
+.bysrc td.v { text-align: right; width: 44px; }
+.bysrc .bar { height: 6px; border-radius: 3px; background: var(--rule); position: relative; overflow: hidden; }
+.bysrc .bar i { position: absolute; left: 0; top: 0; bottom: 0; }
+.polar-wrap { display: flex; justify-content: center; margin-top: 8px; }
+
+.ctab { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ctab th, .ctab td { padding: 4px 6px; text-align: left; }
+.ctab td:first-child { font-weight: 600; }
+.ctab tr.go td { background: color-mix(in srgb, var(--go) 22%, transparent); }
+.ctab tr.as td { background: color-mix(in srgb, var(--assess) 25%, transparent); }
+.ctab tr.ng td { background: color-mix(in srgb, var(--nogo) 22%, transparent); }
+.foot { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+.fams { display: flex; flex-wrap: wrap; gap: 6px 16px; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--rule); }
+.fams label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
+.fams label i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.fams input:disabled + i, .fams input:disabled ~ span { opacity: .45; }
+.srclist { list-style: none; margin: 0; padding: 0; }
+.srclist li { display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 6px; padding: 6px 0; border-top: 1px solid var(--rule); }
+.srclist li:first-child { border-top: 0; }
+.srclist input { margin: 3px 0 0; }
+.srclist .nm { font-weight: 500; }
+.srclist .nm i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.srclist .meta { grid-column: 2 / 4; color: var(--muted); font-size: 13px; }
+.chip { font-size: 12px; padding: 0 6px; border-radius: 9px; border: 1px solid var(--rule); color: var(--muted); align-self: start; }
+.chip.ok { color: var(--go); border-color: currentColor; }
+.chip.partial { color: var(--assess); border-color: currentColor; }
+.chip.error, .chip.missing { color: var(--nogo); border-color: currentColor; }
+
+.upper { padding: 16px 20px 0; display: flex; flex-direction: column; gap: 18px; }
+.win input { margin-right: 10px; }
+.winmsg { color: var(--nogo); margin-left: 8px; }
+.winsum { margin: -2px 0 8px; color: var(--muted); }
+.winsum b { color: var(--ink); font-weight: 600; }
+.hours th.inwin { box-shadow: inset 0 -3px 0 var(--ink); }
+.below { padding: 0 20px 32px; display: flex; flex-direction: column; gap: 18px; }
+.hours { overflow-x: auto; }
+.hours table { border-collapse: separate; border-spacing: 3px; font-size: 15px; min-width: 100%; }
+.hours th { font-weight: 600; padding: 4px 8px; white-space: nowrap; }
+.hours th small { display: block; font-weight: 400; color: var(--muted); }
+.hours td { text-align: center; padding: 8px 6px; border-radius: 3px; white-space: nowrap; }
+.hours td.rowh { text-align: left; font-weight: 600; color: var(--muted); background: none; }
+.hours td.c0 { background: color-mix(in srgb, var(--go) 70%, var(--panel)); color: #fff; }
+.hours td.c1 { background: color-mix(in srgb, var(--assess) 80%, var(--panel)); color: #1b1300; }
+.hours td.c2 { background: color-mix(in srgb, var(--nogo) 80%, var(--panel)); color: #fff; }
+.hours td.pv { background: color-mix(in srgb, var(--rule) 45%, var(--panel)); }
+.polars { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 4px; }
+.polars figure { margin: 0; text-align: center; flex: 0 0 auto; }
+.polars figcaption { font-size: 14px; }
+.polars figcaption small { display: block; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 13px; margin-top: 8px; }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.method { color: var(--muted); font-size: 13px; max-width: 78ch; }
+.method p { margin: 0 0 6px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.csel { font: inherit; font-size: 16px; font-weight: 600; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 6px; margin-top: 8px; }
+.pads { display: inline-flex; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>Plume Constraint</h1>
+    <select class="csel" id="csel" aria-label="Constraint">
+      <option value="index.html">Wind at 200 ft</option>
+      <option value="onshore.html" selected>Onshore wind, surface to 1000 ft</option>
+    </select>
+    <div class="where" id="where">Loading…</div>
+  </div>
+  <div class="fresh" id="fresh"></div>
+</header>
+
+<div class="controls">
+  <span><label>Pad</label><span class="seg pads" id="padSeg" role="group" aria-label="Pad"></span></span>
+  <span class="win"><label for="wstart">Window start</label><input type="datetime-local" id="wstart" step="3600">
+    <label for="wend">end</label><input type="datetime-local" id="wend" step="3600">
+    <span id="tzl" class="where" style="margin:0 8px 0 4px"></span><button class="linkbtn" id="clearWin" type="button">Clear</button>
+    <span id="winMsg" class="winmsg" role="status"></span></span>
+</div>
+<div id="banners"></div>
+
+<section class="upper">
+  <div class="card">
+    <h3 id="hoursTitle">Hour by hour</h3>
+    <p class="winsum" id="winsum"></p>
+    <div class="hours" id="hours"></div>
+  </div>
+  <div class="card">
+    <h3 id="polarTitle">Members by direction and speed</h3>
+    <div class="polars" id="polars"></div>
+    <div class="legend" id="plegend"></div>
+  </div>
+</section>
+
+<main class="layout">
+  <div class="charts" id="charts">
+    <div class="chart" data-kind="pov">
+      <h2>Probability of NO-GO <span class="key"><span><i class="sw" style="background:var(--assess)"></i>P(Backup NO GO)</span><span><i class="sw" style="background:var(--nogo)"></i>P(Primary NO GO)</span></span></h2>
+      <canvas></canvas><canvas class="ov"></canvas>
+    </div>
+    <div class="chart ribbon" data-kind="ribbon"><canvas></canvas><canvas class="ov"></canvas></div>
+    <div class="chart" data-kind="comp">
+      <h2><span>Strongest onshore component, surface to <span id="topft">1000</span> ft</span> <span class="key"><span><i class="sw" style="background:var(--median)"></i>Weighted median</span><span><i class="sw box" style="background:var(--assess)"></i>Backup limit</span><span><i class="sw box" style="background:var(--nogo)"></i>Primary limit</span></span></h2>
+      <canvas></canvas><canvas class="ov"></canvas>
+    </div>
+  </div>
+  <aside class="side">
+    <section class="card readout" id="readout" aria-live="polite"></section>
+    <section class="card">
+      <h3>Constraint</h3>
+      <table class="ctab" id="ctab"></table>
+      <p class="foot">Onshore component is negative. NO-GO when the strongest onshore component anywhere from the surface to <span class="topft2">1000</span> ft reaches the limit.</p>
+    </section>
+    <section class="card">
+      <h3>Sources</h3>
+      <div class="fams" id="fams" role="group" aria-label="Turn source groups on or off"></div>
+      <ul class="srclist" id="srclist"></ul>
+    </section>
+  </aside>
+</main>
+
+<section class="below">
+  <div class="method">
+    <p>The onshore component is the part of the wind blowing straight in from the ocean, perpendicular to the shoreline at each pad (see Constraint for the shoreline normal). It is negative when onshore. For each model member and hour the most negative value between 10 m and the layer top is kept, using every model level in the layer plus the wind interpolated to the layer top. P(Backup NO GO) uses the backup (model) limit and P(Primary NO GO) the primary (balloon) limit; both are the weighted share of members at or beyond the limit.</p>
+    <p>Hi-res models provide 10 m, 80 m and pressure-level winds (1000 to 925 mb); the global ensembles and NBM come through Open-Meteo at 10 to 180 m and pressure levels where available. A model whose highest level is below 80 m is left out. Each source's weight is split across its members, so large ensembles don't outvote the hi-res guidance by count.</p>
+  </div>
+</section>
+
+<script>
+(() => {
+"use strict";
+const DATA_URL = "data/onshore.json";
+const REFRESH_MS = 10 * 60 * 1000, STALE_MIN = 90, KT = 1.943844;
+const M = { l: 48, r: 14 };
+const HEIGHTS = { pov: 160, ribbon: 34, comp: 240 };
+const $ = s => document.querySelector(s);
+const state = { data: null, pad: null, enabled: {}, win: { start: null, end: null }, hover: null, stats: [], nowIdx: 0 };
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} }
+};
+function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function alpha(hex, a) { const n = parseInt(hex.replace("#", ""), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+let COL = {};
+function readColors() { for (const k of ["bg","panel","ink","muted","rule","go","assess","nogo","hires","blend","global","median","now"]) COL[k] = css("--" + k); }
+
+// ---------- time
+let TZ = "UTC";
+function parts(ms) {
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", weekday: "short", timeZoneName: "short" });
+  return Object.fromEntries(f.formatToParts(new Date(ms)).map(p => [p.type, p.value]));
+}
+function zonedToUtc(str) {
+  const [d, t] = str.split("T"); const [y, mo, da] = d.split("-").map(Number); const [h, mi] = t.split(":").map(Number);
+  const want = Date.UTC(y, mo - 1, da, h, mi); let g = want;
+  for (let k = 0; k < 3; k++) { const p = parts(g); g += want - Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute); }
+  return g;
+}
+const toInput = ms => { const p = parts(ms); return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`; };
+const zHour = ms => String(new Date(ms).getUTCHours()).padStart(2, "0") + "Z";
+const localLabel = ms => { const p = parts(ms); return `${p.weekday} ${p.hour}:${p.minute} ${p.timeZoneName}`; };
+
+// ---------- stats
+const pad = () => state.data.pads.find(p => p.id === state.pad);
+function wQuant(pairs, qs) {
+  if (!pairs.length) return qs.map(() => null);
+  pairs.sort((a, b) => a[0] - b[0]); const W = pairs.reduce((s, p) => s + p[1], 0);
+  return qs.map(q => { let c = 0; for (const [v, w] of pairs) { c += w; if (c >= q * W - 1e-9) return v; } return pairs[pairs.length - 1][0]; });
+}
+function compute() {
+  const d = state.data, P = pad(), key = "c@" + P.id, T = d.times.length;
+  state.stats = [];
+  for (let i = 0; i < T; i++) {
+    let W = 0, pb = 0, pp = 0; const vals = [], per = {};
+    for (const s of d.sources) {
+      if (!state.enabled[s.id]) continue;
+      const v = s.members.map(m => m.v[key] ? m.v[key][i] : null).filter(x => x != null);
+      if (!v.length) continue;
+      const fb = v.filter(x => x <= -P.backup_ms).length / v.length, fp = v.filter(x => x <= -P.primary_ms).length / v.length;
+      pb += s.weight * fb; pp += s.weight * fp; W += s.weight; per[s.id] = { pb: fb, pp: fp, n: v.length };
+      v.forEach(x => vals.push([x, s.weight / v.length]));
+    }
+    if (!W) { state.stats.push(null); continue; }
+    const [q10, q50, q90] = wQuant(vals, [.1, .5, .9]);
+    state.stats.push({ pb: pb / W, pp: pp / W, per, q10, q50, q90 });
+  }
+}
+
+// ---------- charts
+const charts = {};
+function setupCharts() {
+  document.querySelectorAll(".chart").forEach(el => {
+    const [base, ov] = el.querySelectorAll("canvas");
+    charts[el.dataset.kind] = { el, base, ov, h: HEIGHTS[el.dataset.kind] };
+    el.addEventListener("pointermove", e => hoverAt(e, base));
+    el.addEventListener("pointerdown", e => hoverAt(e, base));
+    el.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") { state.hover = null; drawOverlays(); readout(); } });
+  });
+}
+function sizeCanvas(cv, h) {
+  const dpr = window.devicePixelRatio || 1, w = cv.parentElement.clientWidth;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + "px"; cv.style.width = w + "px";
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); return { g, w, h };
+}
+const xOf = (i, w) => M.l + (w - M.l - M.r) * i / (state.data.times.length - 1);
+const idxOf = (x, w) => { const n = state.data.times.length - 1; return Math.max(0, Math.min(n, Math.round((x - M.l) / (w - M.l - M.r) * n))); };
+function hoverAt(e, cv) { const r = cv.getBoundingClientRect(); state.hover = idxOf(e.clientX - r.left, r.width); drawOverlays(); readout(); }
+function frame(g, w, h, top, bot, yMin, yMax, ticks, fmt) {
+  const y = v => top + (h - top - bot) * (1 - (v - yMin) / (yMax - yMin));
+  g.font = `12px ${css("--font")}`; g.textAlign = "right"; g.textBaseline = "middle";
+  for (const t of ticks) {
+    g.strokeStyle = COL.rule; g.lineWidth = 1; g.beginPath(); g.moveTo(M.l, Math.round(y(t)) + .5); g.lineTo(w - M.r, Math.round(y(t)) + .5); g.stroke();
+    g.fillStyle = COL.muted; g.fillText(fmt ? fmt(t) : t, M.l - 6, y(t));
+  }
+  return y;
+}
+function timeGrid(g, w, h, top, bot, labels) {
+  const T = state.data.times, pxh = (w - M.l - M.r) / (T.length - 1), step = pxh * 6 >= 30 ? 6 : pxh * 12 >= 30 ? 12 : 24;
+  g.font = `12px ${css("--font")}`; g.textAlign = "center"; g.textBaseline = "top";
+  for (let i = 0; i < T.length; i++) {
+    const p = parts(T[i] * 1000), hr = +p.hour, x = Math.round(xOf(i, w)) + .5;
+    if (hr % step) continue;
+    g.strokeStyle = hr === 0 ? COL.muted : COL.rule; g.globalAlpha = hr === 0 ? .6 : 1;
+    g.beginPath(); g.moveTo(x, top); g.lineTo(x, h - bot); g.stroke(); g.globalAlpha = 1;
+    if (labels) { g.fillStyle = hr === 0 ? COL.ink : COL.muted; g.fillText(hr === 0 ? (step === 24 ? p.weekday : `${p.weekday} ${+p.day}`) : p.hour, x, h - bot + 4); }
+  }
+}
+function markers(g, w, h, top, bot) {
+  const T = state.data.times, t0 = T[0] * 1000, n = T.length - 1, xt = ms => M.l + (w - M.l - M.r) * ((ms - t0) / 3600e3) / n;
+  const line = (ms, color, dash, width, label) => {
+    const x = xt(ms); if (x < M.l || x > w - M.r) return;
+    g.save(); g.strokeStyle = color; g.setLineDash(dash); g.lineWidth = width; g.beginPath(); g.moveTo(x, top); g.lineTo(x, h - bot); g.stroke(); g.restore();
+    if (label) { g.fillStyle = color; g.font = `600 11px ${css("--font")}`; g.textAlign = "left"; g.textBaseline = "top"; g.fillText(label, x + 3, top + 1); }
+  };
+  const { start, end } = state.win;
+  if (start != null && end != null) { const x0 = Math.max(M.l, xt(start)), x1 = Math.min(w - M.r, xt(end)); if (x1 > x0) { g.fillStyle = alpha(COL.ink, .07); g.fillRect(x0, top, x1 - x0, h - top - bot); } }
+  line(Date.now(), COL.now, [3, 3], 1, null);
+  if (start != null) line(start, COL.ink, [], 1.5, "Start");
+  if (end != null) line(end, COL.ink, [], 1.5, "End");
+}
+function series(g, w, y, get, color, width) {
+  g.strokeStyle = color; g.lineWidth = width; g.beginPath(); let pen = false;
+  state.stats.forEach((s, i) => { const v = s ? get(s) : null; if (v == null) { pen = false; return; } const x = xOf(i, w); pen ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); pen = true; });
+  g.stroke();
+}
+const famColor = f => COL[f] || COL.global;
+function drawPOV() {
+  const c = charts.pov, { g, w, h } = sizeCanvas(c.base, c.h), top = 16, bot = 20;
+  const y = frame(g, w, h, top, bot, 0, 100, [0, 50, 100], v => v + "%");
+  timeGrid(g, w, h, top, bot, true);
+  series(g, w, y, s => 100 * s.pb, COL.assess, 2); series(g, w, y, s => 100 * s.pp, COL.nogo, 2);
+  markers(g, w, h, top, bot); c.geom = { top, bot };
+}
+function drawRibbon() {
+  const c = charts.ribbon, { g, w, h } = sizeCanvas(c.base, c.h), n = state.data.times.length, cw = (w - M.l - M.r) / (n - 1);
+  g.font = `12px ${css("--font")}`; g.fillStyle = COL.muted; g.textAlign = "right"; g.textBaseline = "middle";
+  g.fillText("Backup", M.l - 6, 9); g.fillText("Primary", M.l - 6, 25);
+  state.stats.forEach((s, i) => {
+    const x = xOf(i, w) - cw / 2;
+    g.fillStyle = COL.rule; g.globalAlpha = .35; g.fillRect(x, 2, cw + .5, 14); g.fillRect(x, 18, cw + .5, 14); g.globalAlpha = 1;
+    if (!s) return;
+    g.fillStyle = alpha(COL.assess, s.pb); g.fillRect(x, 2, cw + .5, 14);
+    g.fillStyle = alpha(COL.nogo, s.pp); g.fillRect(x, 18, cw + .5, 14);
+  });
+  c.geom = { top: 0, bot: 0 };
+}
+function drawComp() {
+  const c = charts.comp, { g, w, h } = sizeCanvas(c.base, c.h), top = 8, bot = 6, P = pad(), key = "c@" + P.id;
+  let lo = -P.primary_ms - 3, hi = 4;
+  for (const s of state.stats) if (s) { lo = Math.min(lo, s.q10 - 1); hi = Math.max(hi, s.q90 + 1); }
+  lo = Math.floor(lo / 2) * 2; hi = Math.ceil(hi / 2) * 2;
+  const ticks = []; for (let t = lo; t <= hi; t += (hi - lo) > 24 ? 4 : 2) ticks.push(t);
+  const y = frame(g, w, h, top, bot, lo, hi, ticks, v => v + "");
+  g.fillStyle = alpha(COL.assess, .18); g.fillRect(M.l, y(-P.backup_ms), w - M.l - M.r, y(-P.primary_ms) - y(-P.backup_ms));
+  g.fillStyle = alpha(COL.nogo, .13); g.fillRect(M.l, y(-P.primary_ms), w - M.l - M.r, y(lo) - y(-P.primary_ms));
+  g.strokeStyle = COL.muted; g.beginPath(); g.moveTo(M.l, y(0)); g.lineTo(w - M.r, y(0)); g.stroke();
+  g.fillStyle = COL.muted; g.textAlign = "left"; g.font = `11px ${css("--font")}`;
+  g.fillText("offshore ↑", M.l + 4, y(0) - 8); g.fillText("onshore ↓", M.l + 4, y(0) + 8);
+  timeGrid(g, w, h, top, bot, false);
+  const T = state.data.times.length;
+  for (const s of state.data.sources) {
+    if (!state.enabled[s.id]) continue;
+    const a = Math.max(.12, Math.min(.5, 3 / Math.sqrt(s.members.length + 1)));
+    g.strokeStyle = alpha(famColor(s.family), a); g.lineWidth = 1;
+    for (const m of s.members) {
+      const arr = m.v[key]; if (!arr) continue;
+      g.beginPath(); let pen = false;
+      for (let i = 0; i < T; i++) { const v = arr[i]; if (v == null) { pen = false; continue; } const x = xOf(i, w); pen ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); pen = true; }
+      g.stroke();
+    }
+  }
+  series(g, w, y, s => s.q50, COL.median, 2.2);
+  markers(g, w, h, top, bot); c.geom = { top, bot };
+}
+function drawOverlays() {
+  const i = state.hover;
+  for (const k in charts) {
+    const c = charts[k]; if (!c.geom) continue;
+    const { g, w, h } = sizeCanvas(c.ov, parseFloat(c.base.style.height));
+    if (i == null) continue;
+    const x = Math.round(xOf(i, w)) + .5;
+    g.strokeStyle = COL.ink; g.globalAlpha = .7; g.beginPath(); g.moveTo(x, c.geom.top); g.lineTo(x, h - c.geom.bot); g.stroke(); g.globalAlpha = 1;
+  }
+}
+function drawAll() { if (!state.data) return; readColors(); drawPOV(); drawRibbon(); drawComp(); drawOverlays(); readout(); hoursTable(); polars(); }
+
+// ---------- side & tables
+const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+const ms = v => `${v.toFixed(1)} m/s (${(v * KT).toFixed(1)} kt)`;
+function status(s) { const P = pad(); if (!s) return null; return s.q50 <= -P.primary_ms ? 2 : s.q50 <= -P.backup_ms ? 1 : 0; }
+function readout() {
+  const el = $("#readout"), d = state.data; if (!d) return;
+  const i = state.hover ?? state.nowIdx, s = state.stats[i], t = d.times[i] * 1000;
+  let h = `<div class="when">${zHour(t)}<small>${localLabel(t)}</small></div>`;
+  if (!s) { el.innerHTML = h + `<p class="consensus">No enabled source has data for this hour.</p>`; return; }
+  h += `<div class="pov2"><div style="background:${alpha(COL.assess, .12 + .5 * s.pb)}"><div class="n">${pct(s.pb)}</div><div class="l">P(Backup NO GO)</div></div>
+        <div style="background:${alpha(COL.nogo, .08 + .5 * s.pp)}"><div class="n">${pct(s.pp)}</div><div class="l">P(Primary NO GO)</div></div></div>`;
+  h += `<div class="consensus">Median onshore component ${ms(s.q50)}; 10–90% range ${s.q10.toFixed(1)} to ${s.q90.toFixed(1)} m/s</div>`;
+  h += `<div class="polar-wrap"><canvas id="rpolar"></canvas></div><table class="bysrc">`;
+  for (const src of d.sources) {
+    const p = s.per[src.id]; if (!p) continue;
+    h += `<tr><td>${src.label}</td><td style="width:40%"><div class="bar"><i style="width:${p.pb * 100}%;background:${COL.assess}"></i><i style="width:${p.pp * 100}%;background:${COL.nogo}"></i></div></td><td class="v">${pct(p.pb)}</td></tr>`;
+  }
+  el.innerHTML = h + "</table>";
+  drawPolar($("#rpolar"), i, 210);
+}
+
+// ---------- polar plots: each member's wind at the level of its strongest onshore component.
+// Plotted by the direction the wind blows FROM. The NO-GO zones are half-planes: every wind
+// whose projection onto the shoreline normal reaches the limit.
+function drawPolar(cv, i, size) {
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = size * dpr; cv.height = size * dpr; cv.style.width = size + "px"; cv.style.height = size + "px";
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const P = pad(), cx = size / 2, cy = size / 2, R = size / 2 - 16, sKey = "s@" + P.id, dKey = "d@" + P.id;
+  let smax = 0;
+  for (const s of state.data.sources) if (state.enabled[s.id]) for (const m of s.members) { const v = m.v[sKey]; if (v && v[i] != null) smax = Math.max(smax, v[i]); }
+  const rmax = Math.max(12, Math.ceil(Math.max(P.primary_ms * 1.4, smax * 1.1) / 2) * 2);
+  const r = v => R * Math.min(v, rmax) / rmax, ang = d => (d - 90) * Math.PI / 180;
+  const nx = Math.cos(ang(P.coast_normal_deg)), ny = Math.sin(ang(P.coast_normal_deg)), px = -ny, py = nx;
+  g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip();
+  const half = (lim, col) => {
+    const d = r(lim), B = R * 3;
+    g.fillStyle = col; g.beginPath();
+    g.moveTo(cx + nx * d + px * B, cy + ny * d + py * B); g.lineTo(cx + nx * d - px * B, cy + ny * d - py * B);
+    g.lineTo(cx + nx * B - px * B, cy + ny * B - py * B); g.lineTo(cx + nx * B + px * B, cy + ny * B + py * B); g.closePath(); g.fill();
+  };
+  half(P.backup_ms, alpha(COL.assess, .28)); half(P.primary_ms, alpha(COL.nogo, .3));
+  g.strokeStyle = COL.muted; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(cx - px * R, cy - py * R); g.lineTo(cx + px * R, cy + py * R); g.stroke(); g.setLineDash([]);
+  g.restore();
+  g.strokeStyle = COL.rule; g.lineWidth = 1;
+  for (let v = 2; v <= rmax; v += rmax > 16 ? 4 : 2) { g.beginPath(); g.arc(cx, cy, r(v), 0, 7); g.stroke(); }
+  for (let d = 0; d < 360; d += 45) { g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + R * Math.cos(ang(d)), cy + R * Math.sin(ang(d))); g.stroke(); }
+  g.fillStyle = COL.muted; g.font = `11px ${css("--font")}`; g.textAlign = "center"; g.textBaseline = "middle";
+  [["N", 0], ["E", 90], ["S", 180], ["W", 270]].forEach(([t, d]) => g.fillText(t, cx + (R + 9) * Math.cos(ang(d)), cy + (R + 9) * Math.sin(ang(d))));
+  g.textAlign = "left"; g.fillText(rmax + " m/s", cx + 3, cy - R + 7);
+  g.fillStyle = COL.muted; g.font = `600 10px ${css("--font")}`; g.textAlign = "center";
+  g.fillText("SEA", cx + nx * R * .86, cy + ny * R * .86); g.fillText("LAND", cx - nx * R * .8, cy - ny * R * .8);
+  for (const s of state.data.sources) {
+    if (!state.enabled[s.id]) continue;
+    g.fillStyle = alpha(famColor(s.family), .65);
+    for (const m of s.members) {
+      const sv = m.v[sKey], dv = m.v[dKey]; if (!sv || !dv || sv[i] == null || dv[i] == null) continue;
+      g.beginPath(); g.arc(cx + r(sv[i]) * Math.cos(ang(dv[i])), cy + r(sv[i]) * Math.sin(ang(dv[i])), 2, 0, 7); g.fill();
+    }
+  }
+}
+function polars() {
+  const d = state.data, T = d.times, W = state.win, HR = 3600e3, shots = [];
+  let title;
+  if (W.start != null && W.end != null) {
+    title = "Members before, during and after the window";
+    shots.push([W.start - 2 * HR, "Start −2h"], [W.start, "Start"]);
+    const hrs = Math.round((W.end - W.start) / HR), inner = Math.min(3, Math.max(0, hrs - 1));
+    for (let k = 1; k <= inner; k++) { const o = Math.round(hrs * k / (inner + 1)); shots.push([W.start + o * HR, `Start +${o}h`]); }
+    shots.push([W.end, "End"], [W.end + 2 * HR, "End +2h"]);
+  } else if (W.start != null) {
+    title = "Members around the start time";
+    for (const o of [-2, 0, 2, 4, 6]) shots.push([W.start + o * HR, o === 0 ? "Start" : `Start ${o > 0 ? "+" : "−"}${Math.abs(o)}h`]);
+  } else {
+    title = "Members over the next 12 hours";
+    const b = Math.ceil(Date.now() / HR) * HR;
+    for (const o of [0, 3, 6, 9, 12]) shots.push([b + o * HR, o === 0 ? "Now" : `+${o}h`]);
+  }
+  $("#polarTitle").textContent = title + ", at the level of each member's strongest onshore wind";
+  const el = $("#polars"); el.innerHTML = "";
+  for (const [ms0, lab] of shots) {
+    const i = T.findIndex(t => t * 1000 >= ms0); if (i < 0) continue;
+    const f = document.createElement("figure");
+    f.innerHTML = `<canvas></canvas><figcaption>${lab}<small>${zHour(T[i] * 1000)}, ${parts(T[i] * 1000).hour}:00 local</small></figcaption>`;
+    el.appendChild(f); drawPolar(f.querySelector("canvas"), i, 170);
+  }
+  const fams = [...new Set(d.sources.filter(s => state.enabled[s.id] && s.members.length).map(s => s.family))];
+  const names = { hires: "Hi-res", blend: "Blends", global: "Global ensembles" };
+  $("#plegend").innerHTML = fams.map(f => `<span><i style="background:var(--${f})"></i>${names[f] || f}</span>`).join("") +
+    `<span><i style="background:var(--assess);opacity:.5"></i>Backup NO GO zone</span><span><i style="background:var(--nogo);opacity:.5"></i>Primary NO GO zone</span><span>Dashed line: shoreline. Dots are plotted by the direction the wind blows from.</span>`;
+}
+function hoursTable() {
+  const d = state.data, T = d.times, W = state.win, HR = 3600e3;
+  let first, last;
+  if (W.start != null) { first = W.start - 2 * HR; last = Math.min((W.end ?? W.start) + 2 * HR, first + 23 * HR); $("#hoursTitle").textContent = W.end != null ? "Hour by hour, window plus 2 hours each side" : "Hour by hour around the start time"; }
+  else { first = Date.now(); last = first + 11 * HR; $("#hoursTitle").textContent = "Hour by hour, next 12 hours"; }
+  const idx = T.map((t, i) => [t * 1000, i]).filter(([m]) => m >= first - HR + 1 && m <= last).map(([, i]) => i);
+  const inWin = i => W.start != null && T[i] * 1000 >= W.start && T[i] * 1000 <= (W.end ?? W.start);
+  let h = `<table><tr><th></th>`;
+  for (const i of idx) h += `<th${inWin(i) ? ' class="inwin"' : ""}>${zHour(T[i] * 1000)}<small>${parts(T[i] * 1000).hour}:00</small></th>`;
+  const row = (name, f) => { h += `<tr><td class="rowh">${name}</td>` + idx.map(f).join("") + "</tr>"; };
+  row("Onshore (m/s)", i => { const s = state.stats[i]; return s ? `<td class="c${status(s)}">${s.q50.toFixed(1)}</td>` : "<td>–</td>"; });
+  row("In knots", i => { const s = state.stats[i]; return s ? `<td class="pv">${(s.q50 * KT).toFixed(1)}</td>` : "<td>–</td>"; });
+  row("Range (m/s)", i => { const s = state.stats[i]; return s ? `<td class="pv">${s.q10.toFixed(1)} to ${s.q90.toFixed(1)}</td>` : "<td>–</td>"; });
+  row("P(Backup NO GO)", i => `<td class="pv">${pct(state.stats[i]?.pb)}</td>`);
+  row("P(Primary NO GO)", i => `<td class="pv">${pct(state.stats[i]?.pp)}</td>`);
+  $("#hours").innerHTML = idx.length ? h + "</table>" : "<p class='winsum'>The selected times are outside the forecast data.</p>";
+  const el = $("#winsum");
+  if (W.start == null || W.end == null) { el.innerHTML = ""; return; }
+  let pb = null, pp = null;
+  T.forEach((t, i) => { const s = state.stats[i]; if (!s || t * 1000 < W.start || t * 1000 > W.end) return; if (!pb || s.pb > pb.v) pb = { v: s.pb, t }; if (!pp || s.pp > pp.v) pp = { v: s.pp, t }; });
+  el.innerHTML = pb ? `Highest in window: P(Backup NO GO) <b>${pct(pb.v)}</b> at ${zHour(pb.t * 1000)}, P(Primary NO GO) <b>${pct(pp.v)}</b> at ${zHour(pp.t * 1000)}. Median cells are colored by which limit the median onshore component reaches.` : "No forecast data inside the window yet.";
+}
+function constraintTable() {
+  $("#ctab").innerHTML = `<tr><th>Pad</th><th>Shore normal</th><th>Backup</th><th>Primary</th></tr>` + state.data.pads.map(p =>
+    `<tr${p.id === state.pad ? ' style="font-weight:600"' : ""}><td>${p.label}</td><td>${String(p.coast_normal_deg).padStart(3, "0")}°</td><td>-${p.backup_ms.toFixed(1)} m/s<br><small>${(p.backup_ms * KT).toFixed(1)} kt</small></td><td>-${p.primary_ms.toFixed(1)} m/s<br><small>${(p.primary_ms * KT).toFixed(1)} kt</small></td></tr>`).join("");
+}
+const FAMS = [["hires", "All hi-res"], ["blend", "All blends"], ["global", "All global ens"]];
+const START_ON = new Set(["href"]);
+function saveOff() { store.set("onshore.off", JSON.stringify(state.data.sources.filter(s => s.members.length && !state.enabled[s.id] && !START_ON.has(s.id)).map(s => s.id))); }
+function famToggles() {
+  const d = state.data, el = $("#fams");
+  el.innerHTML = FAMS.map(([f, name]) => `<label><input type="checkbox" data-fam="${f}"><i style="background:var(--${f})"></i><span>${name}</span></label>`).join("");
+  el.querySelectorAll("input").forEach(cb => {
+    const srcs = d.sources.filter(s => s.family === cb.dataset.fam && s.members.length), on = srcs.filter(s => state.enabled[s.id]).length;
+    cb.disabled = !srcs.length; cb.checked = srcs.length > 0 && on === srcs.length; cb.indeterminate = on > 0 && on < srcs.length;
+    cb.addEventListener("change", () => { for (const s of srcs) state.enabled[s.id] = cb.checked; saveOff(); sourceList(); compute(); drawAll(); });
+  });
+}
+function sourceList() {
+  const d = state.data, key = "c@" + state.pad;
+  $("#srclist").innerHTML = d.sources.map(s => {
+    const n = s.members.filter(m => m.v[key]).length;
+    return `<li><input type="checkbox" id="src-${s.id}" data-id="${s.id}" ${state.enabled[s.id] ? "checked" : ""} ${n ? "" : "disabled"}>
+      <label class="nm" for="src-${s.id}"><i style="background:var(--${s.family})"></i>${s.label}</label>
+      <span class="chip ${s.status}">${s.status}</span>
+      <span class="meta">${n ? `${n} member${n > 1 ? "s" : ""}, weight ${s.weight}` : "no data"}${s.cycle && s.cycle !== "latest" ? `, ${s.cycle.replace("T", " ")}` : ""}${s.note ? `. ${s.note}` : ""}</span></li>`;
+  }).join("");
+  $("#srclist").querySelectorAll("input").forEach(cb => cb.addEventListener("change", () => { state.enabled[cb.dataset.id] = cb.checked; saveOff(); famToggles(); compute(); drawAll(); }));
+  famToggles();
+}
+function padSeg() {
+  $("#padSeg").innerHTML = state.data.pads.map(p => `<button type="button" data-p="${p.id}" aria-pressed="${p.id === state.pad}">${p.label}</button>`).join("");
+  $("#padSeg").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+    state.pad = b.dataset.p; store.set("onshore.pad", state.pad); padSeg(); header(); constraintTable(); sourceList(); compute(); drawAll(); }));
+}
+function header() {
+  const d = state.data, P = pad();
+  document.querySelectorAll("#topft, .topft2").forEach(e => e.textContent = d.layer_top_ft);
+  $("#where").textContent = `${P.label}, surface to ${d.layer_top_ft} ft, shoreline normal ${String(P.coast_normal_deg).padStart(3, "0")}°`;
+  const age = Math.max(0, Math.round((Date.now() / 1000 - d.generated_unix) / 60)), stale = age > STALE_MIN;
+  const ageTxt = age < 90 ? `${age} min ago` : `${(age / 60).toFixed(1)} h ago`;
+  $("#fresh").className = "fresh" + (stale ? " stale" : "");
+  $("#fresh").innerHTML = `Updated <b>${zHour(d.generated_unix * 1000)} ${d.generated.slice(0, 10)}</b><br><span class="where">${ageTxt}</span>`;
+  let b = "";
+  if (d.demo) b += `<div class="banner">Demo data. The first scheduled run replaces this with live guidance.</div>`;
+  if (stale && !d.demo) b += `<div class="banner bad">Data is ${ageTxt.replace(" ago", "")} old. The hourly update may have failed; check the repository's Actions tab.</div>`;
+  const bad = d.sources.filter(s => ["error", "missing"].includes(s.status));
+  if (bad.length) b += `<div class="banner">No data this run from ${bad.map(s => s.label).join(", ")}.</div>`;
+  $("#banners").innerHTML = b;
+  $("#tzl").textContent = parts(Date.now()).timeZoneName;
+}
+
+// ---------- window (shared with the 200 ft page through the link and storage)
+const isoZ = m => new Date(m).toISOString().slice(0, 16) + "Z";
+function setWindow(start, end, push = true) {
+  $("#winMsg").textContent = "";
+  if (start != null && end != null && end <= start) { $("#winMsg").textContent = "End must be after start."; end = null; }
+  if (start == null && end != null) { start = end; end = null; }
+  state.win = { start, end };
+  $("#wstart").value = start != null ? toInput(start) : ""; $("#wend").value = end != null ? toInput(end) : "";
+  if (push) {
+    const u = new URL(location.href);
+    u.hash = start != null ? "start=" + isoZ(start) + (end != null ? "&end=" + isoZ(end) : "") : "";
+    history.replaceState(null, "", u);
+    store.set("plume.win", start != null ? JSON.stringify(state.win) : null);
+  }
+}
+function readInputs() { const a = $("#wstart").value, b = $("#wend").value; setWindow(a ? zonedToUtc(a) : null, b ? zonedToUtc(b) : null); drawAll(); }
+function wire() {
+  $("#wstart").addEventListener("change", readInputs); $("#wend").addEventListener("change", readInputs);
+  $("#clearWin").addEventListener("click", () => { setWindow(null, null); drawAll(); });
+  $("#csel").addEventListener("change", e => { location.href = e.target.value + location.hash; });
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(drawAll, 120); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+}
+async function load(first) {
+  let d;
+  try { const r = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" }); if (!r.ok) throw new Error("HTTP " + r.status); d = await r.json(); }
+  catch (e) { if (first) $("#banners").innerHTML = `<div class="banner bad">Could not load ${DATA_URL} (${e.message}). The first pipeline run creates it.</div>`; return; }
+  if (!first && state.data && d.generated_unix === state.data.generated_unix) { header(); return; }
+  state.data = d; TZ = d.display_tz || "UTC";
+  let off; try { off = new Set(JSON.parse(store.get("onshore.off") || "[]")); } catch { off = new Set(); }
+  for (const s of d.sources) if (!(s.id in state.enabled)) state.enabled[s.id] = s.members.length > 0 && (START_ON.has(s.id) || !off.has(s.id));
+  const now = Date.now() / 1000; state.nowIdx = Math.max(0, d.times.findIndex(t => t >= now - 1800));
+  if (first) {
+    const saved = store.get("onshore.pad"); state.pad = d.pads.some(p => p.id === saved) ? saved : d.pads[0].id;
+    const hz = k => { const m = location.hash.match(new RegExp(k + "=([\\dT:-]+)Z")); return m ? Date.parse(m[1] + ":00Z") : null; };
+    let st = hz("start"), en = hz("end");
+    if (st == null) { try { ({ start: st, end: en } = JSON.parse(store.get("plume.win") || "{}")); } catch {} }
+    setWindow(st ?? null, en ?? null, false);
+  }
+  readColors(); header(); padSeg(); constraintTable(); sourceList(); compute(); drawAll();
+}
+setupCharts(); wire(); load(true); setInterval(() => load(false), REFRESH_MS);
+})();
+</script>
+</body>
+</html>
