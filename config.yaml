@@ -11,11 +11,11 @@ site:
 # the combined level for each member is the lower of the two individual levels.
 constraint:
   magnitude_mph:
-    assess_at_or_above: 5.8   # below this = GO
-    nogo_above: 8.4
+    assess_at_or_above: 6.5   # below this = GO
+    nogo_above: 9.5
   direction_deg:
-    go_arc: [155, 60]         # clockwise from first to second, inclusive (wraps through north)
-    nogo_arc: [80, 135]       # inclusive; anything outside go_arc and nogo_arc = assessment
+    go_arc: [165, 45]         # clockwise from first to second, inclusive (wraps through north)
+    nogo_arc: [95, 125]       # inclusive; anything outside go_arc and nogo_arc = assessment
 
 window:
   hours_back: 12
@@ -203,14 +203,14 @@ onshore:
       lat: 28.6082
       lon: -80.6041
       coast_normal_deg: 62     # shoreline runs about 332/152 degrees east of the pad
-      backup_ms: 7.5
-      primary_ms: 8.0
+      backup_ms: 6.5
+      primary_ms: 7.2
     - id: "40"
       label: SLC-40
       lat: 28.5620
       lon: -80.5772
       coast_normal_deg: 65     # shoreline runs about 335/155 degrees east of the pad
-      backup_ms: 7.0
-      primary_ms: 7.5
+      backup_ms: 6.0
+      primary_ms: 6.8
   # Sources from the list above that have an onshore reader (hi-res GRIB, Open-Meteo).
   sources: [hrrr, href, nam3k, nbm, ecmwf_ens, aifs_ens, gefs, icon_eps, gem_eps]

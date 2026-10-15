@@ -139,6 +139,10 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line
 .method p { margin: 0 0 6px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
+input.lim { width: 72px; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 5px; font: inherit; font-variant-numeric: tabular-nums; }
+#ctab td { vertical-align: middle; padding: 4px 4px; }
+#ctab td.hint { color: var(--muted); font-size: 12px; }
+#ctab td:nth-child(2) { white-space: nowrap; }
 .csel { font: inherit; font-size: 16px; font-weight: 600; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 6px; margin-top: 8px; }
 .pads { display: inline-flex; }
 </style>
@@ -195,6 +199,7 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line
     <section class="card">
       <h3>Constraint</h3>
       <table class="ctab" id="ctab"></table>
+      <p class="foot" id="limWarn" style="color:var(--nogo)"></p>
       <p class="foot">Onshore component is negative. NO-GO when the strongest onshore component anywhere from the surface to <span class="topft2">1000</span> ft reaches the limit.</p>
     </section>
     <section class="card">
@@ -220,7 +225,7 @@ const REFRESH_MS = 10 * 60 * 1000, STALE_MIN = 90, KT = 1.943844;
 const M = { l: 48, r: 14 };
 const HEIGHTS = { pov: 160, ribbon: 34, comp: 240 };
 const $ = s => document.querySelector(s);
-const state = { data: null, pad: null, enabled: {}, win: { start: null, end: null }, hover: null, stats: [], nowIdx: 0 };
+const state = { lim: {}, data: null, pad: null, enabled: {}, win: { start: null, end: null }, hover: null, stats: [], nowIdx: 0 };
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} }
@@ -247,7 +252,24 @@ const zHour = ms => String(new Date(ms).getUTCHours()).padStart(2, "0") + "Z";
 const localLabel = ms => { const p = parts(ms); return `${p.weekday} ${p.hour}:${p.minute} ${p.timeZoneName}`; };
 
 // ---------- stats
-const pad = () => state.data.pads.find(p => p.id === state.pad);
+// Limits: config defaults, overridden per pad by the user (saved in this browser).
+const basePad = () => state.data.pads.find(p => p.id === state.pad);
+const pad = () => ({ ...basePad(), ...(state.lim[state.pad] || {}) });
+const customised = id => { const o = state.lim[id]; return !!o && Object.keys(o).length > 0; };
+// Onshore component per member. With the default shoreline normal it is the pipeline's layer
+// maximum; with a changed normal it is recomputed from the wind (speed, direction) at the level
+// where the pipeline found the strongest onshore wind, which is a close approximation.
+function compArr(m) {
+  const P = pad(), base = basePad(), key = "c@" + P.id;
+  if (P.coast_normal_deg === base.coast_normal_deg) return m.v[key] || null;
+  const ck = `${P.id}:${P.coast_normal_deg}`;
+  m._c = m._c || {};
+  if (!(ck in m._c)) {
+    const sp = m.v["s@" + P.id], dr = m.v["d@" + P.id];
+    m._c[ck] = sp && dr ? sp.map((v, i) => v == null || dr[i] == null ? null : -v * Math.cos((dr[i] - P.coast_normal_deg) * Math.PI / 180)) : null;
+  }
+  return m._c[ck];
+}
 function wQuant(pairs, qs) {
   if (!pairs.length) return qs.map(() => null);
   pairs.sort((a, b) => a[0] - b[0]); const W = pairs.reduce((s, p) => s + p[1], 0);
@@ -260,7 +282,7 @@ function compute() {
     let W = 0, pb = 0, pp = 0; const vals = [], per = {};
     for (const s of d.sources) {
       if (!state.enabled[s.id]) continue;
-      const v = s.members.map(m => m.v[key] ? m.v[key][i] : null).filter(x => x != null);
+      const v = s.members.map(m => { const a = compArr(m); return a ? a[i] : null; }).filter(x => x != null);
       if (!v.length) continue;
       const fb = v.filter(x => x <= -P.backup_ms).length / v.length, fp = v.filter(x => x <= -P.primary_ms).length / v.length;
       pb += s.weight * fb; pp += s.weight * fp; W += s.weight; per[s.id] = { pb: fb, pp: fp, n: v.length };
@@ -369,7 +391,7 @@ function drawComp() {
     const a = Math.max(.12, Math.min(.5, 3 / Math.sqrt(s.members.length + 1)));
     g.strokeStyle = alpha(famColor(s.family), a); g.lineWidth = 1;
     for (const m of s.members) {
-      const arr = m.v[key]; if (!arr) continue;
+      const arr = compArr(m); if (!arr) continue;
       g.beginPath(); let pen = false;
       for (let i = 0; i < T; i++) { const v = arr[i]; if (v == null) { pen = false; continue; } const x = xOf(i, w); pen ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); pen = true; }
       g.stroke();
@@ -504,9 +526,30 @@ function hoursTable() {
   el.innerHTML = pb ? `Highest in window: P(Backup NO GO) <b>${pct(pb.v)}</b> at ${zHour(pb.t * 1000)}, P(Primary NO GO) <b>${pct(pp.v)}</b> at ${zHour(pp.t * 1000)}. Median cells are colored by which limit the median onshore component reaches.` : "No forecast data inside the window yet.";
 }
 function constraintTable() {
-  $("#ctab").innerHTML = `<tr><th>Pad</th><th>Shore normal</th><th>Backup</th><th>Primary</th></tr>` + state.data.pads.map(p =>
-    `<tr${p.id === state.pad ? ' style="font-weight:600"' : ""}><td>${p.label}</td><td>${String(p.coast_normal_deg).padStart(3, "0")}°</td><td>-${p.backup_ms.toFixed(1)} m/s<br><small>${(p.backup_ms * KT).toFixed(1)} kt</small></td><td>-${p.primary_ms.toFixed(1)} m/s<br><small>${(p.primary_ms * KT).toFixed(1)} kt</small></td></tr>`).join("");
+  const P = pad(), B = basePad(), cust = customised(P.id);
+  const field = (k, label, unit, step, min, max, extra) => `<tr><td>${label}</td>
+    <td><input class="lim" type="number" data-k="${k}" value="${P[k]}" step="${step}" min="${min}" max="${max}" aria-label="${label}"> ${unit}</td>
+    <td class="hint">${extra(P[k])}${P[k] !== B[k] ? `<br>default ${B[k]}` : ""}</td></tr>`;
+  $("#ctab").innerHTML = `<tr><th colspan="3">${P.label}${cust ? ' <span class="chip partial">custom</span>' : ""}</th></tr>` +
+    field("coast_normal_deg", "Shoreline normal", "°", 1, 0, 359, v => `onshore = wind from ${String(Math.round(v)).padStart(3, "0")}°`) +
+    field("backup_ms", "Backup limit", "m/s", 0.1, 0, 30, v => `−${(+v).toFixed(1)} m/s, ${(v * KT).toFixed(1)} kt`) +
+    field("primary_ms", "Primary limit", "m/s", 0.1, 0, 30, v => `−${(+v).toFixed(1)} m/s, ${(v * KT).toFixed(1)} kt`) +
+    `<tr><td colspan="3">${cust ? '<button class="linkbtn" type="button" id="limReset">Reset to defaults</button>' : '<span class="hint">Edit a value to change the limits for this pad.</span>'}</td></tr>`;
+  $("#ctab").querySelectorAll("input.lim").forEach(inp => inp.addEventListener("change", () => {
+    let v = parseFloat(inp.value); const k = inp.dataset.k;
+    if (!isFinite(v)) { constraintTable(); return; }
+    if (k === "coast_normal_deg") v = ((Math.round(v) % 360) + 360) % 360; else v = Math.max(0, Math.round(v * 10) / 10);
+    const o = state.lim[state.pad] = state.lim[state.pad] || {};
+    if (v === B[k]) delete o[k]; else o[k] = v;
+    saveLim(); setTimeout(limitsChanged, 0);      // re-render after the input's own event finishes
+  }));
+  const r = $("#limReset"); if (r) r.addEventListener("click", () => { delete state.lim[state.pad]; saveLim(); setTimeout(limitsChanged, 0); });
+  const p2 = pad();
+  $("#limWarn").textContent = p2.primary_ms < p2.backup_ms ? "The primary limit is below the backup limit, so P(Primary NO GO) will be higher than P(Backup NO GO)." :
+    (p2.coast_normal_deg !== B.coast_normal_deg ? "With a changed shoreline normal, each member's onshore component is recomputed from the wind at the height where the original layer maximum was found, a close approximation of the full layer check." : "");
 }
+function saveLim() { store.set("onshore.lim", JSON.stringify(state.lim)); }
+function limitsChanged() { constraintTable(); header(); compute(); drawAll(); }
 const FAMS = [["hires", "All hi-res"], ["blend", "All blends"], ["global", "All global ens"]];
 const START_ON = new Set(["href"]);
 function saveOff() { store.set("onshore.off", JSON.stringify(state.data.sources.filter(s => s.members.length && !state.enabled[s.id] && !START_ON.has(s.id)).map(s => s.id))); }
@@ -545,6 +588,7 @@ function header() {
   $("#fresh").className = "fresh" + (stale ? " stale" : "");
   $("#fresh").innerHTML = `Updated <b>${zHour(d.generated_unix * 1000)} ${d.generated.slice(0, 10)}</b><br><span class="where">${ageTxt}</span>`;
   let b = "";
+  if (customised(state.pad)) b += `<div class="banner">Custom limits for ${P.label}: shoreline normal ${String(P.coast_normal_deg).padStart(3, "0")}°, backup −${P.backup_ms.toFixed(1)} m/s, primary −${P.primary_ms.toFixed(1)} m/s. These are saved in this browser only; reset them under Constraint.</div>`;
   if (d.demo) b += `<div class="banner">Demo data. The first scheduled run replaces this with live guidance.</div>`;
   if (stale && !d.demo) b += `<div class="banner bad">Data is ${ageTxt.replace(" ago", "")} old. The hourly update may have failed; check the repository's Actions tab.</div>`;
   const bad = d.sources.filter(s => ["error", "missing"].includes(s.status));
@@ -586,6 +630,7 @@ async function load(first) {
   for (const s of d.sources) if (!(s.id in state.enabled)) state.enabled[s.id] = s.members.length > 0 && (START_ON.has(s.id) || !off.has(s.id));
   const now = Date.now() / 1000; state.nowIdx = Math.max(0, d.times.findIndex(t => t >= now - 1800));
   if (first) {
+    try { state.lim = JSON.parse(store.get("onshore.lim") || "{}") || {}; } catch { state.lim = {}; }
     const saved = store.get("onshore.pad"); state.pad = d.pads.some(p => p.id === saved) ? saved : d.pads[0].id;
     const hz = k => { const m = location.hash.match(new RegExp(k + "=([\\dT:-]+)Z")); return m ? Date.parse(m[1] + ":00Z") : null; };
     let st = hz("start"), en = hz("end");
